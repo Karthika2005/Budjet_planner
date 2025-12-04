@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Budget Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 20px; color: #333; }
+        h1,h2,h3 { text-align: center; }
+        form { background:#fff; padding:20px; border-radius:12px; 
+               box-shadow:0px 4px 10px rgba(0,0,0,0.1); max-width:600px; margin:auto; }
+        label { display:block; margin-top:10px; }
+        input[type="number"] { width:100%; padding:8px; margin-top:5px; 
+                               border-radius:6px; border:1px solid #ccc; }
+        button { margin-top:15px; padding:12px 20px; width:100%; border:none; 
+                 border-radius:8px; background:#4caf50; color:white; font-size:16px; cursor:pointer; }
+        button:hover { background:#45a049; }
+
+        #result-container { display:flex; flex-direction:column; align-items:center; gap:40px; margin-top:30px; }
+
+        #result-box, #pdf-section {
+            background:#fff; padding:20px; border-radius:12px; 
+            box-shadow:0px 4px 10px rgba(0,0,0,0.1); width:90%; max-width:800px;
+        }
+
+        .progress-bar-container { background:#ddd; border-radius:8px; overflow:hidden; height:20px; margin-top:5px; }
+        .progress-bar { height:100%; width:0%; background:green; text-align:center; 
+                        color:white; line-height:20px; transition:width 0.5s, background 0.5s; }
+        canvas { display:block; margin:auto; }
+        .analysis-box h3 { color:#d9534f; }
+
+        #pdf-section { margin-top:20px; }
+    </style>
+</head>
+
+<body>
+
+<h1>Budget Calculator</h1>
+
+<form id="budgetForm">
+    <h3>Income</h3>
+    <label>Total Income:</label>
+    <input type="number" id="income" oninput="updateProgressBars()"><br><br>
+
+    <h3>Essentials</h3>
+    <label>Rent:</label><input type="number" id="rent" oninput="updateProgressBars()"><br>
+    <label>Groceries:</label><input type="number" id="groceries" oninput="updateProgressBars()"><br>
+    <label>Transport:</label><input type="number" id="transport" oninput="updateProgressBars()"><br>
+    <label>Utilities(Water,EB,Recharge,etc..):</label><input type="number" id="utilities" oninput="updateProgressBars()"><br>
+    <label>Medical:</label><input type="number" id="medical" oninput="updateProgressBars()"><br>
+    <label>Others:</label><input type="number" id="nec_others" oninput="updateProgressBars()"><br>
+
+    <div class="progress-bar-container">
+        <div id="progressNec" class="progress-bar">0%</div>
+    </div>
+
+    <h3>Lifestyle expenses</h3>
+    <label>Shopping:</label><input type="number" id="shopping" oninput="updateProgressBars()"><br>
+    <label>Entertainment:</label><input type="number" id="entertainment" oninput="updateProgressBars()"><br>
+    <label>Eat-out:</label><input type="number" id="eatout" oninput="updateProgressBars()"><br>
+    <label>Others:</label><input type="number" id="needs_others" oninput="updateProgressBars()"><br>
+
+    <div class="progress-bar-container">
+        <div id="progressNeed" class="progress-bar">0%</div>
+    </div>
+
+    <h3>Savings</h3>
+    <label>Insurance:</label><input type="number" id="insurance" oninput="updateProgressBars()"><br>
+    <label>Investment:</label><input type="number" id="investment" oninput="updateProgressBars()"><br>
+    <label>Others:</label><input type="number" id="sav_others" oninput="updateProgressBars()"><br>
+
+    <div class="progress-bar-container">
+        <div id="progressSav" class="progress-bar">0%</div>
+    </div>
+
+    <button type="button" onclick="calculate()">Calculate</button>
+    <button type="button" onclick="downloadPDF()">Download PDF</button>
+</form>
+
+<div id="result-container">
+    <div id="pdf-section">
+        <h2>Result</h2>
+        <p id="total_expenses"></p>
+        <p id="leftover"></p>
+        <p id="emergency_display"></p>
+
+        <h2>50-30-20 Rule Check</h2>
+        <p id="necessity_check"></p>
+        <p id="needs_check"></p>
+        <p id="savings_check"></p>
+
+        <h2>Tips</h2>
+        <p id="tips"></p>
+
+        <h2>Quote</h2>
+        <p id="quote"></p>
+
+        <h2>Pie Chart</h2>
+        <canvas id="budgetChart" width="300" height="300"></canvas>
+
+        <h2>Analysis</h2>
+        <div id="analysis_area"></div>
+    </div>
+</div>
+
+<script>
+let chart;
+let alertedNec = false, alertedNeed = false;
+
+function getValue(id){ return parseFloat(document.getElementById(id).value)||0; }
+
+function updateProgressBars(){
+    let income = getValue("income");
+    if(income <= 0) return;
+
+    let limitNec = income * 0.5;
+    let limitNeed = income * 0.3;
+    let limitSav = income * 0.2;
+
+    let necTotal = getValue("rent") + getValue("groceries") + getValue("transport") + getValue("utilities") + getValue("medical") + getValue("nec_others");
+    let needTotal = getValue("shopping") + getValue("entertainment") + getValue("eatout") + getValue("needs_others");
+    let savTotal = getValue("insurance") + getValue("investment") + getValue("sav_others");
+
+    function setBar(id, total, limit){
+        let val = (total / limit) * 100;
+        let bar = document.getElementById(id);
+        bar.style.width = Math.min(val, 100) + "%";
+        bar.innerText = val.toFixed(0) + "%";
+        bar.style.background = val <= 100 ? "green" : "red";
+    }
+
+    setBar("progressNec", necTotal, limitNec);
+    setBar("progressNeed", needTotal, limitNeed);
+    setBar("progressSav", savTotal, limitSav);
+
+    // ✅ Real-time alerts
+    if(necTotal > limitNec && !alertedNec){
+        alert("⚠ You have exceeded your Essentials limit!");
+        alertedNec = true;
+    } else if(necTotal <= limitNec){
+        alertedNec = false;
+    }
+
+    if(needTotal > limitNeed && !alertedNeed){
+        alert("⚠ You have exceeded your Lifestyle expenses limit!");
+        alertedNeed = true;
+    } else if(needTotal <= limitNeed){
+        alertedNeed = false;
+    }
+}
+
+function calculate(){
+    let income = getValue("income");
+    if(income <= 0){ alert("Please enter income first!"); return; }
+
+    let limitNec = income * 0.5, limitNeed = income * 0.3, limitSav = income * 0.2;
+
+    let necTotal = getValue("rent") + getValue("groceries") + getValue("transport") + getValue("utilities") + getValue("medical") + getValue("nec_others");
+    let needTotal = getValue("shopping") + getValue("entertainment") + getValue("eatout") + getValue("needs_others");
+    let savTotal = getValue("insurance") + getValue("investment") + getValue("sav_others");
+
+    let totalExpenses = necTotal + needTotal + savTotal;
+    let leftover = income - totalExpenses;
+    let emergency = leftover>0?leftover:0;
+
+    document.getElementById("total_expenses").innerText="Total Expenses: ₹"+totalExpenses.toFixed(2);
+    document.getElementById("leftover").innerText="Leftover Amount: ₹"+leftover.toFixed(2);
+    document.getElementById("emergency_display").innerText="Emergency Fund Saved: ₹"+emergency.toFixed(2);
+
+    document.getElementById("necessity_check").innerText = necTotal<=limitNec ? "✔ Essentials Within Limit" : "❌ Essentials Overspent";
+    document.getElementById("needs_check").innerText = needTotal<=limitNeed ? "✔ Lifestyle expenses Within Limit" : "❌ Lifestyle expenses Overspent";
+    document.getElementById("savings_check").innerText = savTotal>=limitSav ? "✔ Savings Good" : "❌ Savings Below Recommended";
+
+    let analysisHTML = "";
+    if(necTotal > limitNec) analysisHTML += "<p>⚠ Overspending in Essentials.</p>";
+    if(needTotal > limitNeed) analysisHTML += "<p>⚠ Overspending in Lifestyle expenses.</p>";
+    if(savTotal < limitSav) analysisHTML += "<p>⚠ Savings Too Low.</p>";
+    if(analysisHTML === "") analysisHTML = "<p>✔ Perfect Budgeting!</p>";
+    document.getElementById("analysis_area").innerHTML = analysisHTML;
+
+    let tips = "";
+    let quote = "";
+
+    if (necTotal > limitNec) {
+        tips = "• Reduce bill expenses.<br>• Buy groceries in offers.";
+        quote = "“Beware of little expenses; a small leak will sink a great ship.”";
+    } 
+    else if (needTotal > limitNeed) {
+        tips = "• Control impulse shopping.<br>• Avoid unnecessary outings.";
+        quote = "“The goal isn’t more money. The goal is living life on your terms.”";
+    } 
+    else if (savTotal < limitSav) {
+        tips = "• Try saving first before spending.<br>• Start an RD or SIP.";
+        quote = "“Do not save what is left after spending, but spend what is left after saving.”";
+    }
+    else {
+        tips = "• Excellent! Your budgeting is perfect.<br>• Keep following the 50-30-20 rule.";
+        quote = "“A budget is telling your money where to go instead of wondering where it went.”";
+    }
+
+    document.getElementById("tips").innerHTML = tips;
+    document.getElementById("quote").innerHTML = quote;
+
+    let data = {
+        labels:['Essentials','Lifestyle expenses','Savings','Emergency Fund'],
+        datasets:[{
+            data:[necTotal,needTotal,savTotal,emergency],
+            backgroundColor:['#66b3ff','#ff9999','#99ff99','#ffcc99']
+        }]
+    };
+
+    if(chart) chart.destroy();
+    chart = new Chart(document.getElementById("budgetChart"), {
+        type:'pie', data:data
+    });
+}
+
+async function downloadPDF(){
+    const pdfSection = document.getElementById("pdf-section");
+    const canvas = await html2canvas(pdfSection);
+    const imgData = canvas.toDataURL("image/png");
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "mm", "a4");
+
+    const width = pdf.internal.pageSize.getWidth();
+    const height = canvas.height * width / canvas.width;
+
+    pdf.addImage(imgData, "PNG", 0, 0, width, height);
+    pdf.save("Budget_Report.pdf");
+}
+</script>
+
+</body>
+</html>
